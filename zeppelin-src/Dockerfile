@@ -7,7 +7,17 @@
 ## this will eliminate zeppelin/spark version  mismatches (typically on connect)
 FROM jeffreymanning/sparkr-base
 
-MAINTAINER Jeff Manning
+LABEL maintainer="JWM" \
+      vendor="MITRE Corp" \
+      version="0.8" \
+      release="0" \
+      summary="MITRE's base Zeppelin, Spark-R image - 0.8.0/3.4.x/2.1.1 API node" \
+      description="Centos7, Zeppelin, Spark, R typically used for API nodes" \
+### Required labels above - recommended below
+      io.k8s.description="Centos, Zeppelin, Spark-R base API node image" \
+      io.k8s.display-name="centos, Zeppelin, Spark-R API node image" \
+      io.openshift.expose-services="Zeppelin" \
+      io.openshift.tags="centos7,Zeppelin,Spark,R,java,maven"
 
 # well, this needs to be addressed...
 # allow containers withs with USER root to getr root privs
@@ -16,11 +26,15 @@ MAINTAINER Jeff Manning
 USER root
 
 #install the basic packages
-RUN yum clean all && rm -rf /var/cache/yum
-RUN yum -y update && yum clean all
-RUN yum -y install gcc-c++ make && \
-    yum -y groupinstall 'Development Tools' && \
-    yum clean all && rm -rf /var/cache/yum
+RUN yum clean all && \
+    yum -y update && \
+    yum clean all -y
+
+RUN INSTALL_PKGS="gcc-c++ make" && \
+    yum -y install --setopt=tsflags=nodocs ${INSTALL_PKGS} && \
+    yum -y --setopt=tsflags=nodocs groupinstall 'Development Tools' && \
+    yum clean all -y && \
+    rm -rf /var/cache/yum
 
 # from centos: tar curl net-tools build-essential git wget zip unzip vim
 # pre-reqs
