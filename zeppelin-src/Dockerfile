@@ -87,20 +87,34 @@ RUN mkdir -p ${ZEPPELIN_HOME}/logs  \
 
 ### change the ownership
 # change ownership to the spark process (non-root)
-RUN groupadd -r zeppelin && useradd --no-log-init -r -g zeppelin zeppelin
-RUN usermod -aG wheel zeppelin
-RUN usermod -aG staff zeppelin
-RUN chown -R -L zeppelin:zeppelin ${ZEPPELIN_HOME}
+# initial group is root, then add accordingly
+#
+# need to get umask set to 002; therefore id -un must equal id -gn (/etc/profile) and
+# must also be in group root
+ENV USER_NAME=zeppelin
+ENV USER_UID=1003
+RUN groupadd -r ${USER_NAME}  && \
+#    useradd --no-log-init -r -g 0 zeppelin && \
+#    useradd --no-log-init -s /bin/false -d ${ZEPPELIN_HOME} -u 1001 -g zeppelin zeppelin && \
+    useradd -u ${USER_UID}  -g ${USER_NAME} ${USER_NAME} && \
+    usermod -aG wheel ${USER_NAME}  && \
+    usermod -aG staff ${USER_NAME}  && \
+#    usermod -aG zeppelin zeppelin && \
+    usermod -aG root ${USER_NAME}  && \
+#    chown -R -L ${USER_NAME}:${USER_NAME}  ${ZEPPELIN_HOME} && \
+    chown -R -L spark:root  ${ZEPPELIN_HOME} && \
+    chmod g+wx ${ZEPPELIN_HOME}/data
 
 
 
-#### Define default command.
+#### Define defauchmod g+wxlt command.
 VOLUME ${ZEPPELIN_HOME}/notebook
 VOLUME ${ZEPPELIN_HOME}/conf
 VOLUME ${ZEPPELIN_HOME}/data
 
 # set the working directory
-USER zeppelin
+#USER zeppelin
+USER spark
 
 # Make the default PWD somewhere that the user can write. This is
 # useful when connecting with 'oc run' and starting a 'spark-shell',
