@@ -5,6 +5,9 @@
 ## SPARK_HOME, When it is defined, load it instead of Zeppelin embedded Spark libraries
 ##
 ## this will eliminate zeppelin/spark version  mismatches (typically on connect)
+# see https://github.com/1ambda/docker-zeppelin/blob/master/base/Dockerfile
+# see https://nodejs.org/en/download/package-manager/#enterprise-linux-and-fedora
+
 FROM jeffreymanning/sparkr-base
 
 LABEL maintainer="JWM" \
@@ -23,27 +26,70 @@ LABEL maintainer="JWM" \
 # allow containers withs with USER root to getr root privs
 # requires:
 # oc admin policy add-scc-to-user anyuid -z default -n <namespace installed into>
+# oc adm policy add-scc-to-user privileged -z default -n test
+
 USER root
 
 #install the basic packages
-RUN yum clean all && \
-    yum -y update && \
-    yum clean all -y
+#RUN yum clean all && \
+#    yum -y update && \
+#    yum clean all -y
 
-RUN INSTALL_PKGS="gcc-c++ make" && \
-    yum -y install --setopt=tsflags=nodocs ${INSTALL_PKGS} && \
-    yum -y --setopt=tsflags=nodocs groupinstall 'Development Tools' && \
-    yum clean all -y && \
+# pre-reqs
+RUN yum clean all -y && \
+    echo "update and install basic packages" && \
+    yum -y update && \
+# to plot, i.e. matplot etc, requires X windows (withn no gui)
+#    yum -y --setopt=tsflags=nodocs groupinstall 'X Window System' && \
+    INSTALL_BASE_PKGS="grep sed bzip2" && \
+    yum -y install --setopt=tsflags=nodocs ${INSTALL_BASE_PKGS} && \
+#    yum -y --setopt=tsflags=nodocs groupinstall 'Development Tools' && \
+    yum -y clean all && \
     rm -rf /var/cache/yum
 
-# from centos: tar curl net-tools build-essential git wget zip unzip vim
-# pre-reqs
-#RUN yum -y install wget gcc openssl openssl-devel python-setuptools python-devel python-boto npm numpy libfontconfig  && yum clean all
-#RUN curl https://bootstrap.pypa.io/get-pip.py > /tmp/get-pip.py && python /tmp/get-pip.py && pip install -U pip
-# requirements
-###python
-RUN curl https://bootstrap.pypa.io/get-pip.py > /tmp/get-pip.py && python /tmp/get-pip.py && pip install -U pip
-RUN pip install numpy pandasql scipy
+# these are big...
+#RUN echo "install conda before numpy, matplotlib,..." && \
+#    echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh && \
+##    wget --quiet https://repo.continuum.io/archive/Anaconda2-5.0.1-Linux-x86_64.sh -O ~/anaconda.sh && \
+#    wget --quiet https://repo.continuum.io/miniconda/Miniconda2-4.3.30-Linux-x86_64.sh -O ~/miniconda.sh && \
+#    /bin/bash ~/anaconda.sh -b -p /opt/conda && \
+#    rm ~/anaconda.sh
+#ENV PATH /opt/conda/bin:$PATH
+# see https://nodejs.org/en/download/package-manager/#enterprise-linux-and-fedora
+RUN echo "nodejs install" && \
+    curl https://rpm.nodesource.com/setup_6.x | bash - && \
+    yum -y install nodejs && \
+    yum -y clean all && \
+    rm -rf /var/cache/yum
+
+# configure npm
+#   see https://hub.docker.com/r/ietty/centos7-npm/~/dockerfile/
+#RUN node -v && \
+#    npm -v && \
+#    npm cache verify && \
+##    npm cache clean && \
+##    npm install n -g && \
+##    npm update -g npm && \
+#    npm config set strict-ssl false && \
+#    npm config rm proxy && \
+#    npm config rm https-proxy
+##    npm config set registry "http://registry.npmjs.org/"
+##    npm install -g yarn types typescript
+##    npm install -g bower
+##    yum erase -y nodejs npm && \
+
+###python - we use pip to install our packages
+RUN echo "update and install python packages" && \
+    INSTALL_PY_PKGS="python-setuptools python-devel python-boto libfontconfig" && \
+    yum -y install --setopt=tsflags=nodocs ${INSTALL_PY_PKGS}
+
+RUN curl https://bootstrap.pypa.io/get-pip.py > /tmp/get-pip.py && python /tmp/get-pip.py && pip install -U pip && \
+    pip install numpy pandasql scipy matplotlib jupyter grpcio py4j plotly
+## additional packages
+RUN /usr/bin/Rscript --slave --no-save --no-restore-history -e "install.packages('googleVis', repos='http://cran.us.r-project.org')" && \
+    /usr/bin/Rscript --slave --no-save --no-restore-history -e "install.packages(pkgs=c('Rcpp'), repos='http://cran.us.r-project.org')" && \
+    /usr/bin/Rscript --slave --no-save --no-restore-history -e "library('devtools'); library('Rcpp'); install_github('ramnathv/rCharts')" && \
+    /usr/bin/Rscript --slave --no-save --no-restore-history -e "require(devtools); devtools::install('${SPARK_HOME}/R/lib/SparkR')"
 
 #COPY requirements.txt /tmp
 #RUN pip install -r /tmp/requirements.txt
@@ -85,6 +131,8 @@ RUN mkdir -p ${ZEPPELIN_HOME}/logs  \
     && mkdir -p ${ZEPPELIN_HOME}/run  \
     && mkdir -p ${ZEPPELIN_HOME}/data
 
+ENV PYTHONPATH="${ZEPPELIN_HOME}/interpreter/lib/python:${PYTHONPATH}"
+
 ### change the ownership
 # change ownership to the spark process (non-root)
 # initial group is root, then add accordingly
@@ -93,14 +141,15 @@ RUN mkdir -p ${ZEPPELIN_HOME}/logs  \
 # must also be in group root
 ENV USER_NAME=zeppelin
 ENV USER_UID=1003
-RUN groupadd -r ${USER_NAME}  && \
+RUN groupadd -g ${USER_UID} ${USER_NAME}  && \
 #    useradd --no-log-init -r -g 0 zeppelin && \
 #    useradd --no-log-init -s /bin/false -d ${ZEPPELIN_HOME} -u 1001 -g zeppelin zeppelin && \
     useradd -u ${USER_UID}  -g ${USER_NAME} ${USER_NAME} && \
     usermod -aG wheel ${USER_NAME}  && \
-    usermod -aG staff ${USER_NAME}  && \
+#    usermod -aG staff ${USER_NAME}  && \
 #    usermod -aG zeppelin zeppelin && \
     usermod -aG root ${USER_NAME}  && \
+    usermod -aG default ${USER_NAME}  && \
 #    chown -R -L ${USER_NAME}:${USER_NAME}  ${ZEPPELIN_HOME} && \
     chown -R -L spark:root  ${ZEPPELIN_HOME} && \
     chmod g+wx ${ZEPPELIN_HOME}/data
@@ -112,16 +161,14 @@ VOLUME ${ZEPPELIN_HOME}/notebook
 VOLUME ${ZEPPELIN_HOME}/conf
 VOLUME ${ZEPPELIN_HOME}/data
 
-# set the working directory
-#USER zeppelin
-USER spark
-
 # Make the default PWD somewhere that the user can write. This is
 # useful when connecting with 'oc run' and starting a 'spark-shell',
 # which will likely try to create files and directories in PWD and
 # error out if it cannot.
 #WORKDIR /tmp
 WORKDIR ${ZEPPELIN_HOME}
-
-CMD ["/opt/zeppelin/bin/zeppelin.sh"]
+# set the working directory
+#USER zeppelin
+USER spark
+CMD ["bin/zeppelin.sh"]
 
