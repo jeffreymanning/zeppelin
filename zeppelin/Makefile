@@ -1,6 +1,6 @@
 LOCAL_IMAGE=zeppelin
 SPARK_IMAGE=jeffreymanning/$(LOCAL_IMAGE)
-versionDef=0.7.2
+versionDef=0.7.3
 version?=$(versionDef)
 
 # If you're pushing to an integrated registry
